@@ -7,7 +7,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import numpy as np
 import pandas as pd
-from .black_scholes import BlackScholes
+from black_scholes import BlackScholes
 
 
 def create_3d_option_surface(stock_prices, volatilities, time_to_expiry, strike_price, risk_free_rate, option_type='call'):
