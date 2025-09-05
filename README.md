@@ -44,7 +44,7 @@ Options Guru is a powerful Streamlit application designed for professional optio
 To run the Options Guru application, use the following command:
 
 ```bash
-streamlit run Home.py
+streamlit run app.py
 ```
 
 The application will be available at `http://localhost:8501` in your web browser.
@@ -61,7 +61,7 @@ python -m pytest tests/
 
 ```
 options-guru/
-├── Home.py                 # Main Streamlit application
+├── app.py                  # Main Streamlit application
 ├── pages/                  # Additional Streamlit pages
 │   └── 01_Advanced_Visualizations.py
 ├── utils/                  # Utility modules
