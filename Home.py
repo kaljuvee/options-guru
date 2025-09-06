@@ -79,6 +79,27 @@ st.markdown("""
         margin-bottom: 1rem;
         font-size: 0.9rem;
     }
+    .parameter-section {
+        background-color: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        border: 1px solid #dee2e6;
+    }
+    .calculate-button {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 0.25rem;
+        font-weight: bold;
+    }
+    .quick-results {
+        background-color: #e8f5e8;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left: 4px solid #28a745;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -101,15 +122,15 @@ if 'option_type' not in st.session_state:
     st.session_state.option_type = 'Call'
 if 'position' not in st.session_state:
     st.session_state.position = 'Long (Buy)'
-if 'auto_update' not in st.session_state:
-    st.session_state.auto_update = True
+if 'recalculate_trigger' not in st.session_state:
+    st.session_state.recalculate_trigger = 0
 
 # Header
 st.markdown('<h1 class="main-header">📊 Options Pricing Calculator</h1>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">Professional options trading analysis and visualization tool</p>', unsafe_allow_html=True)
 
-# Sidebar - Option Parameters
-st.sidebar.header("💰 Option Parameters")
+# Sidebar - Only Data Source
+st.sidebar.header("⚙️ Settings")
 
 # Market Data Source Selection
 st.sidebar.subheader("Data Source")
@@ -123,267 +144,313 @@ data_source = st.sidebar.selectbox(
 data_provider.set_provider(data_source)
 
 st.sidebar.markdown("---")
+st.sidebar.markdown(f"**Current Provider:** {data_provider.get_provider().name}")
+st.sidebar.markdown(f"**Available Providers:** {len(available_providers)}")
 
-# Stock Selection
-st.sidebar.subheader("📈 Stock Selection")
+# Function to calculate option metrics
+def calculate_metrics():
+    """Calculate option metrics based on current parameters"""
+    time_to_expiry = st.session_state.days_to_expiry / 365.0
+    volatility_decimal = st.session_state.volatility / 100.0
+    risk_free_decimal = st.session_state.risk_free_rate / 100.0
 
-# Popular stocks for quick selection
-popular_stocks = get_popular_stocks()
-col1, col2 = st.sidebar.columns(2)
+    bs = BlackScholes(
+        st.session_state.stock_price,
+        st.session_state.strike_price,
+        time_to_expiry,
+        risk_free_decimal,
+        volatility_decimal
+    )
+
+    option_metrics = bs.calculate_option_metrics(
+        st.session_state.option_type.lower(),
+        st.session_state.contracts
+    )
+
+    # Adjust for short position
+    if st.session_state.position == 'Short (Sell)':
+        option_metrics['total_cost'] = -option_metrics['total_cost']
+    
+    return bs, option_metrics
+
+# Main content area
+col1, col2 = st.columns([2, 1])
 
 with col1:
-    if st.button("🍎 AAPL", help="Apple Inc."):
-        st.session_state.selected_stock = 'AAPL'
-        st.rerun()
-    if st.button("🚗 TSLA", help="Tesla Inc."):
-        st.session_state.selected_stock = 'TSLA'
-        st.rerun()
-    if st.button("📊 SPY", help="S&P 500 ETF"):
-        st.session_state.selected_stock = 'SPY'
-        st.rerun()
-
-with col2:
-    if st.button("💻 MSFT", help="Microsoft Corp."):
-        st.session_state.selected_stock = 'MSFT'
-        st.rerun()
-    if st.button("🔍 GOOGL", help="Alphabet Inc."):
-        st.session_state.selected_stock = 'GOOGL'
-        st.rerun()
-    if st.button("📱 QQQ", help="Nasdaq 100 ETF"):
-        st.session_state.selected_stock = 'QQQ'
-        st.rerun()
-
-# Stock search and selection
-stock_search = st.sidebar.text_input(
-    "Search Stock Symbol",
-    value="",
-    placeholder="Type symbol (e.g., AAPL, MSFT)"
-)
-
-if stock_search:
-    matches = search_stocks(stock_search)
-    if matches:
-        selected_from_search = st.sidebar.selectbox(
-            "Select from matches:",
-            options=matches,
-            format_func=lambda x: f"{x} - {get_stock_name(x)}"
+    # Stock Selection Section
+    st.markdown('<div class="parameter-section">', unsafe_allow_html=True)
+    st.subheader("📈 Stock Selection")
+    
+    # Popular stocks for quick selection
+    st.markdown("**Quick Selection:**")
+    popular_stocks = get_popular_stocks()
+    cols = st.columns(6)
+    
+    for i, stock in enumerate(popular_stocks[:6]):
+        with cols[i]:
+            if st.button(f"{stock}", help=f"{get_stock_name(stock)}", key=f"quick_{stock}"):
+                st.session_state.selected_stock = stock
+                st.rerun()
+    
+    # Stock search and selection
+    col_search, col_current = st.columns([1, 1])
+    
+    with col_search:
+        stock_search = st.text_input(
+            "Search Stock Symbol",
+            value="",
+            placeholder="Type symbol (e.g., AAPL, MSFT)",
+            help="Search for stocks by symbol or company name"
         )
-        if st.sidebar.button("Select Stock"):
-            st.session_state.selected_stock = selected_from_search
+        
+        if stock_search:
+            matches = search_stocks(stock_search)
+            if matches:
+                selected_from_search = st.selectbox(
+                    "Select from matches:",
+                    options=matches,
+                    format_func=lambda x: f"{x} - {get_stock_name(x)}",
+                    key="search_results"
+                )
+                if st.button("Select Stock", key="select_from_search"):
+                    st.session_state.selected_stock = selected_from_search
+                    st.rerun()
+    
+    with col_current:
+        current_stock = st.selectbox(
+            "Current Stock",
+            options=get_stock_list(),
+            index=get_stock_list().index(st.session_state.selected_stock) if st.session_state.selected_stock in get_stock_list() else 0,
+            format_func=lambda x: f"{x} - {get_stock_name(x)}",
+            key="current_stock_select"
+        )
+        
+        if current_stock != st.session_state.selected_stock:
+            st.session_state.selected_stock = current_stock
+    
+    # Display current stock info and live price button
+    col_info, col_price = st.columns([2, 1])
+    
+    with col_info:
+        st.markdown(f"""
+        <div class="stock-info">
+            <strong>Selected:</strong> {st.session_state.selected_stock}<br>
+            <strong>Company:</strong> {get_stock_name(st.session_state.selected_stock)}
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_price:
+        if st.button("🔄 Get Live Price", help="Fetch current market price", key="get_live_price"):
+            with st.spinner("Fetching live data..."):
+                stock_data = data_provider.get_stock_data(st.session_state.selected_stock)
+                if stock_data:
+                    st.session_state.stock_price = stock_data['price']
+                    current_price = stock_data['price']
+                    st.session_state.strike_price = round(current_price * 1.05, 2)  # 5% OTM
+                    st.success(f"Updated! Current price: ${current_price:.2f}")
+                    st.rerun()
+                else:
+                    st.error("Could not fetch live data.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Parameters Section
+    st.markdown('<div class="parameter-section">', unsafe_allow_html=True)
+    st.subheader("💰 Option Parameters")
+    
+    # Price parameters
+    col1_param, col2_param, col3_param = st.columns(3)
+    
+    with col1_param:
+        st.session_state.stock_price = st.number_input(
+            "Stock Price ($)",
+            min_value=0.01,
+            value=st.session_state.stock_price,
+            step=0.01,
+            format="%.2f",
+            help="Current price of the underlying stock",
+            key="stock_price_input"
+        )
+    
+    with col2_param:
+        st.session_state.strike_price = st.number_input(
+            "Strike Price ($)",
+            min_value=0.01,
+            value=st.session_state.strike_price,
+            step=0.01,
+            format="%.2f",
+            help="Strike price of the option",
+            key="strike_price_input"
+        )
+    
+    with col3_param:
+        st.session_state.days_to_expiry = st.number_input(
+            "Days to Expiration",
+            min_value=1,
+            max_value=365,
+            value=st.session_state.days_to_expiry,
+            step=1,
+            help="Number of days until option expiration",
+            key="days_to_expiry_input"
+        )
+    
+    # Market parameters
+    col4_param, col5_param, col6_param = st.columns(3)
+    
+    with col4_param:
+        st.session_state.volatility = st.number_input(
+            "Volatility (%)",
+            min_value=0.1,
+            max_value=200.0,
+            value=st.session_state.volatility,
+            step=0.1,
+            format="%.1f",
+            help="Implied volatility of the option",
+            key="volatility_input"
+        )
+    
+    with col5_param:
+        st.session_state.risk_free_rate = st.number_input(
+            "Risk-Free Rate (%)",
+            min_value=0.0,
+            max_value=20.0,
+            value=st.session_state.risk_free_rate,
+            step=0.1,
+            format="%.1f",
+            help="Risk-free interest rate",
+            key="risk_free_rate_input"
+        )
+    
+    with col6_param:
+        st.session_state.contracts = st.number_input(
+            "Contracts",
+            min_value=1,
+            max_value=1000,
+            value=st.session_state.contracts,
+            step=1,
+            help="Number of option contracts",
+            key="contracts_input"
+        )
+    
+    # Option type and position
+    col7_param, col8_param, col_calc = st.columns([1, 1, 1])
+    
+    with col7_param:
+        st.session_state.option_type = st.selectbox(
+            "Option Type",
+            options=['Call', 'Put'],
+            index=0 if st.session_state.option_type == 'Call' else 1,
+            help="Type of option contract",
+            key="option_type_select"
+        )
+    
+    with col8_param:
+        st.session_state.position = st.selectbox(
+            "Position",
+            options=['Long (Buy)', 'Short (Sell)'],
+            index=0 if st.session_state.position == 'Long (Buy)' else 1,
+            help="Long (buy) or Short (sell) position",
+            key="position_select"
+        )
+    
+    with col_calc:
+        st.markdown("<br>", unsafe_allow_html=True)  # Add some spacing
+        if st.button("🧮 Calculate", type="primary", help="Recalculate option metrics", key="main_calculate"):
+            st.session_state.recalculate_trigger += 1
             st.rerun()
-
-# Current stock selection
-current_stock = st.sidebar.selectbox(
-    "Current Stock",
-    options=get_stock_list(),
-    index=get_stock_list().index(st.session_state.selected_stock) if st.session_state.selected_stock in get_stock_list() else 0,
-    format_func=lambda x: f"{x} - {get_stock_name(x)}"
-)
-
-if current_stock != st.session_state.selected_stock:
-    st.session_state.selected_stock = current_stock
-
-# Display current stock info
-st.sidebar.markdown(f"""
-<div class="stock-info">
-    <strong>Selected:</strong> {st.session_state.selected_stock}<br>
-    <strong>Company:</strong> {get_stock_name(st.session_state.selected_stock)}
-</div>
-""", unsafe_allow_html=True)
-
-# Auto-update stock price
-if st.sidebar.button("🔄 Get Live Price", help="Fetch current market price"):
-    with st.spinner("Fetching live data..."):
-        stock_data = data_provider.get_stock_data(st.session_state.selected_stock)
-        if stock_data:
-            st.session_state.stock_price = stock_data['price']
-            # Auto-suggest strike prices around current price
-            current_price = stock_data['price']
-            st.session_state.strike_price = round(current_price * 1.05, 2)  # 5% OTM
-            st.sidebar.success(f"Updated! Current price: ${current_price:.2f}")
-        else:
-            st.sidebar.error("Could not fetch live data. Using manual input.")
-
-st.sidebar.markdown("---")
-
-# Option Parameters
-st.sidebar.subheader("Parameters")
-
-col1, col2 = st.sidebar.columns(2)
-
-with col1:
-    st.session_state.stock_price = st.number_input(
-        "Stock Price ($)",
-        min_value=0.01,
-        value=st.session_state.stock_price,
-        step=0.01,
-        format="%.2f",
-        help="Current price of the underlying stock"
-    )
+    
+    # Quick strike suggestions
+    st.markdown("**Quick Strike Selection:**")
+    current_price = st.session_state.stock_price
+    strike_suggestions = [
+        ("ATM", current_price),
+        ("5% OTM", current_price * 1.05 if st.session_state.option_type == 'Call' else current_price * 0.95),
+        ("10% OTM", current_price * 1.10 if st.session_state.option_type == 'Call' else current_price * 0.90),
+        ("5% ITM", current_price * 0.95 if st.session_state.option_type == 'Call' else current_price * 1.05),
+        ("10% ITM", current_price * 0.90 if st.session_state.option_type == 'Call' else current_price * 1.10),
+    ]
+    
+    cols_strikes = st.columns(5)
+    for i, (label, strike) in enumerate(strike_suggestions):
+        with cols_strikes[i]:
+            if st.button(label, help=f"${strike:.2f}", key=f"strike_{label}"):
+                st.session_state.strike_price = round(strike, 2)
+                st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
-    st.session_state.strike_price = st.number_input(
-        "Strike Price ($)",
-        min_value=0.01,
-        value=st.session_state.strike_price,
-        step=0.01,
-        format="%.2f",
-        help="Strike price of the option"
-    )
-
-st.session_state.days_to_expiry = st.sidebar.number_input(
-    "Days to Expiration",
-    min_value=1,
-    max_value=365,
-    value=st.session_state.days_to_expiry,
-    step=1,
-    help="Number of days until option expiration"
-)
-
-col3, col4 = st.sidebar.columns(2)
-
-with col3:
-    st.session_state.volatility = st.number_input(
-        "Volatility (%)",
-        min_value=0.1,
-        max_value=200.0,
-        value=st.session_state.volatility,
-        step=0.1,
-        format="%.1f",
-        help="Implied volatility of the option"
-    )
-
-with col4:
-    st.session_state.risk_free_rate = st.number_input(
-        "Risk-Free Rate (%)",
-        min_value=0.0,
-        max_value=20.0,
-        value=st.session_state.risk_free_rate,
-        step=0.1,
-        format="%.1f",
-        help="Risk-free interest rate"
-    )
-
-st.session_state.contracts = st.sidebar.number_input(
-    "Contracts",
-    min_value=1,
-    max_value=1000,
-    value=st.session_state.contracts,
-    step=1,
-    help="Number of option contracts"
-)
-
-col5, col6 = st.sidebar.columns(2)
-
-with col5:
-    st.session_state.option_type = st.selectbox(
-        "Option Type",
-        options=['Call', 'Put'],
-        index=0 if st.session_state.option_type == 'Call' else 1,
-        help="Type of option contract"
-    )
-
-with col6:
-    st.session_state.position = st.selectbox(
-        "Position",
-        options=['Long (Buy)', 'Short (Sell)'],
-        index=0 if st.session_state.position == 'Long (Buy)' else 1,
-        help="Long (buy) or Short (sell) position"
-    )
-
-# Quick strike suggestions
-st.sidebar.markdown("**Quick Strike Selection:**")
-current_price = st.session_state.stock_price
-strike_suggestions = [
-    ("ATM", current_price),
-    ("5% OTM", current_price * 1.05 if st.session_state.option_type == 'Call' else current_price * 0.95),
-    ("10% OTM", current_price * 1.10 if st.session_state.option_type == 'Call' else current_price * 0.90),
-]
-
-cols = st.sidebar.columns(3)
-for i, (label, strike) in enumerate(strike_suggestions):
-    with cols[i]:
-        if st.button(label, help=f"${strike:.2f}"):
-            st.session_state.strike_price = round(strike, 2)
-            st.rerun()
-
-# Calculate option metrics
-time_to_expiry = st.session_state.days_to_expiry / 365.0
-volatility_decimal = st.session_state.volatility / 100.0
-risk_free_decimal = st.session_state.risk_free_rate / 100.0
-
-bs = BlackScholes(
-    st.session_state.stock_price,
-    st.session_state.strike_price,
-    time_to_expiry,
-    risk_free_decimal,
-    volatility_decimal
-)
-
-option_metrics = bs.calculate_option_metrics(
-    st.session_state.option_type.lower(),
-    st.session_state.contracts
-)
-
-# Adjust for short position
-if st.session_state.position == 'Short (Sell)':
-    option_metrics['total_cost'] = -option_metrics['total_cost']
-
-# Quick Results in Sidebar
-st.sidebar.markdown("---")
-st.sidebar.subheader("Quick Results")
-
-profit_color = "positive" if option_metrics['total_cost'] >= 0 else "negative"
-cost_label = "Premium Received" if st.session_state.position == 'Short (Sell)' else "Premium Paid"
-
-st.sidebar.markdown(f"""
-<div class="metric-card">
-    <strong>Option Price:</strong> ${option_metrics['option_price']:.2f}
-</div>
-<div class="metric-card">
-    <strong>{cost_label}:</strong> <span class="{profit_color}">${abs(option_metrics['total_cost']):.2f}</span>
-</div>
-<div class="metric-card">
-    <strong>Breakeven:</strong> ${option_metrics['breakeven']:.2f}
-</div>
-""", unsafe_allow_html=True)
-
-# Moneyness indicator
-moneyness = st.session_state.stock_price / st.session_state.strike_price
-if st.session_state.option_type == 'Call':
-    if moneyness > 1.02:
-        moneyness_label = "ITM (In-the-Money)"
-        moneyness_color = "positive"
-    elif moneyness < 0.98:
-        moneyness_label = "OTM (Out-of-the-Money)"
-        moneyness_color = "negative"
-    else:
-        moneyness_label = "ATM (At-the-Money)"
-        moneyness_color = "neutral"
-else:  # Put
-    if moneyness < 0.98:
-        moneyness_label = "ITM (In-the-Money)"
-        moneyness_color = "positive"
-    elif moneyness > 1.02:
-        moneyness_label = "OTM (Out-of-the-Money)"
-        moneyness_color = "negative"
-    else:
-        moneyness_label = "ATM (At-the-Money)"
-        moneyness_color = "neutral"
-
-st.sidebar.markdown(f"""
-<div class="metric-card">
-    <strong>Moneyness:</strong> <span class="{moneyness_color}">{moneyness_label}</span><br>
-    <small>Ratio: {moneyness:.3f}</small>
-</div>
-""", unsafe_allow_html=True)
+    # Quick Results Section
+    st.markdown('<div class="quick-results">', unsafe_allow_html=True)
+    st.subheader("📊 Quick Results")
+    
+    # Calculate metrics
+    bs, option_metrics = calculate_metrics()
+    
+    # Display key metrics
+    profit_color = "positive" if option_metrics['total_cost'] >= 0 else "negative"
+    cost_label = "Premium Received" if st.session_state.position == 'Short (Sell)' else "Premium Paid"
+    
+    st.metric("Option Price", f"${option_metrics['option_price']:.2f}")
+    st.metric(cost_label, f"${abs(option_metrics['total_cost']):.2f}")
+    st.metric("Breakeven", f"${option_metrics['breakeven']:.2f}")
+    
+    # Moneyness indicator
+    moneyness = st.session_state.stock_price / st.session_state.strike_price
+    if st.session_state.option_type == 'Call':
+        if moneyness > 1.02:
+            moneyness_label = "ITM (In-the-Money)"
+            moneyness_color = "positive"
+        elif moneyness < 0.98:
+            moneyness_label = "OTM (Out-of-the-Money)"
+            moneyness_color = "negative"
+        else:
+            moneyness_label = "ATM (At-the-Money)"
+            moneyness_color = "neutral"
+    else:  # Put
+        if moneyness < 0.98:
+            moneyness_label = "ITM (In-the-Money)"
+            moneyness_color = "positive"
+        elif moneyness > 1.02:
+            moneyness_label = "OTM (Out-of-the-Money)"
+            moneyness_color = "negative"
+        else:
+            moneyness_label = "ATM (At-the-Money)"
+            moneyness_color = "neutral"
+    
+    st.markdown(f"""
+    <div style="margin-top: 1rem;">
+        <strong>Moneyness:</strong> <span class="{moneyness_color}">{moneyness_label}</span><br>
+        <small>Ratio: {moneyness:.3f}</small>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Greeks summary
+    greeks = option_metrics['greeks']
+    st.markdown("---")
+    st.markdown("**Greeks Summary:**")
+    st.markdown(f"• **Delta:** {greeks['delta']:.3f}")
+    st.markdown(f"• **Gamma:** {greeks['gamma']:.4f}")
+    st.markdown(f"• **Theta:** {greeks['theta']:.4f}")
+    st.markdown(f"• **Vega:** {greeks['vega']:.4f}")
+    st.markdown(f"• **Rho:** {greeks['rho']:.4f}")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # Main content area with tabs
+st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["📈 P&L Chart", "🔢 Greeks", "📊 Analysis", "📰 Market Data"])
 
 with tab1:
     st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-    st.subheader("Profit & Loss at Expiration")
+    
+    # Calculate button for this tab
+    col_title, col_calc_tab = st.columns([3, 1])
+    with col_title:
+        st.subheader("Profit & Loss at Expiration")
+    with col_calc_tab:
+        if st.button("🧮 Recalculate P&L", help="Recalculate P&L chart", key="pnl_calculate"):
+            st.session_state.recalculate_trigger += 1
     
     # Generate P&L chart
     stock_prices = np.linspace(
@@ -434,10 +501,6 @@ with tab1:
         annotation_text="Breakeven Point"
     )
     
-    # Add profit/loss zones
-    max_pnl = max(pnl_values)
-    min_pnl = min(pnl_values)
-    
     fig.update_layout(
         title=f"Profit & Loss at Expiration - {st.session_state.position} {st.session_state.option_type} ({st.session_state.selected_stock})",
         xaxis_title="Stock Price at Expiration ($)",
@@ -450,6 +513,9 @@ with tab1:
     st.plotly_chart(fig, use_container_width=True)
     
     # P&L Summary
+    max_pnl = max(pnl_values)
+    min_pnl = min(pnl_values)
+    
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -477,7 +543,14 @@ with tab1:
 
 with tab2:
     st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-    st.subheader("Greeks Analysis")
+    
+    # Calculate button for this tab
+    col_title, col_calc_tab = st.columns([3, 1])
+    with col_title:
+        st.subheader("Greeks Analysis")
+    with col_calc_tab:
+        if st.button("🧮 Recalculate Greeks", help="Recalculate Greeks", key="greeks_calculate"):
+            st.session_state.recalculate_trigger += 1
     
     greeks = option_metrics['greeks']
     
@@ -582,7 +655,14 @@ with tab2:
 
 with tab3:
     st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-    st.subheader("Strategy Analysis")
+    
+    # Calculate button for this tab
+    col_title, col_calc_tab = st.columns([3, 1])
+    with col_title:
+        st.subheader("Strategy Analysis")
+    with col_calc_tab:
+        if st.button("🧮 Recalculate Analysis", help="Recalculate strategy analysis", key="analysis_calculate"):
+            st.session_state.recalculate_trigger += 1
     
     # Calculate max profit and loss
     if st.session_state.option_type == 'Call':
@@ -690,7 +770,14 @@ with tab3:
 
 with tab4:
     st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-    st.subheader("📈 Market Overview")
+    
+    # Calculate button for this tab
+    col_title, col_calc_tab = st.columns([3, 1])
+    with col_title:
+        st.subheader("📈 Market Overview")
+    with col_calc_tab:
+        if st.button("🔄 Refresh Market Data", help="Refresh market data", key="market_refresh"):
+            st.rerun()
     
     # Get market overview
     market_data = data_provider.get_market_overview()
@@ -739,7 +826,7 @@ with tab4:
                 st.metric("Prev Close", f"${current_stock_data['previous_close']:.2f}")
             
             # Update button
-            if st.button("📊 Use This Price", type="primary"):
+            if st.button("📊 Use This Price", type="primary", key="use_market_price"):
                 st.session_state.stock_price = current_stock_data['price']
                 st.success(f"Updated stock price to ${current_stock_data['price']:.2f}")
                 st.rerun()
@@ -747,40 +834,6 @@ with tab4:
             st.caption(f"Last updated: {current_stock_data['last_updated']} | Data provided by {data_provider.get_provider().name}")
         else:
             st.error(f"Could not fetch data for {st.session_state.selected_stock}. Please check the symbol or try a different data provider.")
-    
-    st.markdown("---")
-    st.subheader("📰 Market News")
-    
-    # Mock news data (in a real app, this would come from a news API)
-    news_items = [
-        {
-            "title": f"{st.session_state.selected_stock} Options Activity Surges Ahead of Earnings",
-            "description": f"Unusual options activity detected in {st.session_state.selected_stock} with increased volume in near-term calls and puts as traders position for upcoming earnings announcement.",
-            "source": "Options Flow",
-            "time": "2 hours ago"
-        },
-        {
-            "title": "Market Volatility Creates Options Trading Opportunities",
-            "description": "Current market conditions are creating attractive opportunities for options traders, with elevated implied volatility across major indices and individual stocks.",
-            "source": "Market Analysis",
-            "time": "4 hours ago"
-        },
-        {
-            "title": "Federal Reserve Policy Impact on Options Markets",
-            "description": "Recent Federal Reserve communications continue to influence options pricing and trading strategies across all sectors.",
-            "source": "Economic News",
-            "time": "6 hours ago"
-        }
-    ]
-    
-    for news in news_items:
-        st.markdown(f"""
-        <div style="border-left: 4px solid #1f77b4; padding: 1rem; margin-bottom: 1rem; background-color: #f8f9fa;">
-            <h5 style="margin-bottom: 0.5rem; color: #1f77b4;">{news['title']}</h5>
-            <p style="margin-bottom: 0.5rem;">{news['description']}</p>
-            <small style="color: #6c757d;">{news['source']} • {news['time']}</small>
-        </div>
-        """, unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
