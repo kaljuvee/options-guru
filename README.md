@@ -26,11 +26,18 @@ Options Guru is a powerful Streamlit application designed for professional optio
    ```
 
 3. **Install the required packages:**
+   
+   **Basic installation (core features only):**
    ```bash
    pip install -r requirements.txt
    ```
+   
+   **Full installation (all data providers and dev tools):**
+   ```bash
+   pip install -r requirements-full.txt
+   ```
 
-4. **Set up your API keys:**
+4. **Set up your API keys (optional for additional data providers):**
    Create a `.env` file in the root directory of the project and add your API keys:
    ```
    OPENAI_API_KEY=your_openai_api_key
@@ -38,6 +45,8 @@ Options Guru is a powerful Streamlit application designed for professional optio
    ALPACA_PAPER_SECRET_KEY=your_alpaca_paper_secret_key
    POLYGON_API_KEY=your_polygon_api_key
    ```
+
+**Note:** The application works with just Yahoo Finance (yfinance) by default. Additional data providers (Alpaca, Polygon) are optional and require API keys.
 
 ## Running the Application
 

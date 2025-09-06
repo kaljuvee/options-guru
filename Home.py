@@ -113,9 +113,10 @@ st.sidebar.header("💰 Option Parameters")
 
 # Market Data Source Selection
 st.sidebar.subheader("Data Source")
+available_providers = data_provider.get_available_providers()
 data_source = st.sidebar.selectbox(
     "Market Data Provider",
-    options=['yfinance', 'polygon', 'alpaca'],
+    options=available_providers,
     index=0,
     help="Select your preferred market data provider"
 )

@@ -1,0 +1,21 @@
+# Full requirements including all optional dependencies
+
+# Core application dependencies
+streamlit
+plotly
+pandas
+numpy
+scipy
+python-dotenv
+
+# Market data providers
+yfinance
+requests
+alpaca-trade-api
+polygon-api-client
+
+# Development and testing
+pytest
+black
+flake8
+

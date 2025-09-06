@@ -1,14 +1,23 @@
+# Core application dependencies
 streamlit
 plotly
 pandas
 numpy
-yfinance
 scipy
-python-dotenv
-alpaca-trade-api
-polygon-api-client
+
+# Market data providers
+yfinance
 requests
-pytest
-black
-flake8
+
+# Environment configuration
+python-dotenv
+
+# Optional market data providers (can be installed separately if needed)
+# alpaca-trade-api
+# polygon-api-client
+
+# Development and testing (optional)
+# pytest
+# black
+# flake8
 
